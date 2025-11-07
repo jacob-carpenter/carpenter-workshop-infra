@@ -134,7 +134,15 @@ output "next_steps" {
        helm dependency update .
        helm install cluster-baseline ./ --namespace cluster-baseline --values values.yaml --create-namespace
 
-    7. Update Kubernetes app to use ACM certificate:
+    7. Update any relevant interacting app to use latest HMAC secure token:
+       aws ssm get-parameter \
+         --name "carpenter-workshop-${var.environment}-hmac-token" \
+         --with-decryption \
+         --query 'Parameter.Value' \
+         --output text \
+         --region ${var.aws_region}
+
+    8. Update any relevant Kubernetes app to use ACM certificate:
        Certificate ARN: ${module.acm.certificate_arn}
 
        Update the ingress annotation in your app's values.yaml:
