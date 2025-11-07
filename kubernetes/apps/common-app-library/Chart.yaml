@@ -1,0 +1,7 @@
+# Helm Library Chart - Reusable templates for applications
+apiVersion: v2
+name: common-app-library
+description: Library chart with reusable Kubernetes resource templates for base carpenter-workshop applications
+type: library  # This is a library chart, not an application chart
+version: 1.0.0
+appVersion: "1.0.0"

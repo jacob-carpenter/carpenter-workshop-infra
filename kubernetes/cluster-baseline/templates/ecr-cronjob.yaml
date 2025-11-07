@@ -1,0 +1,100 @@
+{{- if .Values.ecrCredentialHelper.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ecr-credential-helper
+  namespace: kube-system
+  labels:
+    app: ecr-credential-helper
+    component: cluster-baseline
+spec:
+  # Run every 6 hours (ECR tokens expire after 12 hours)
+  schedule: "0 */6 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ecr-credential-helper
+        spec:
+          serviceAccountName: {{ .Values.ecrCredentialHelper.serviceAccount.name }}
+          # Run on control-plane node which has internet access
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: "true"
+          # Allow scheduling on control-plane (K3s allows this by default, but being explicit)
+          tolerations:
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
+          - key: node-role.kubernetes.io/master
+            operator: Exists
+            effect: NoSchedule
+          restartPolicy: OnFailure
+          containers:
+          - name: ecr-credential-helper
+            image: {{ .Values.ecrCredentialHelper.image.repository }}:{{ .Values.ecrCredentialHelper.image.tag }}
+            imagePullPolicy: {{ .Values.ecrCredentialHelper.image.pullPolicy }}
+            {{- with .Values.ecrCredentialHelper.resources }}
+            resources:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            env:
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.ecrCredentialHelper.ecr.region }}
+            - name: ECR_REGISTRY
+              value: "{{ .Values.ecrCredentialHelper.ecr.registryAccount }}.dkr.ecr.{{ .Values.ecrCredentialHelper.ecr.region }}.amazonaws.com"
+            - name: SECRET_NAME
+              value: {{ .Values.ecrCredentialHelper.secretName }}
+            command:
+            - /bin/sh
+            - -c
+            - |
+              #!/bin/sh
+              set -e
+
+              echo "Starting ECR credential refresh..."
+              echo "Verifying tools are available..."
+              which aws kubectl || exit 1
+              echo "Region: $AWS_DEFAULT_REGION"
+              echo "Registry: $ECR_REGISTRY"
+
+              # Get ECR login token
+              echo "Fetching ECR authentication token..."
+              TOKEN=$(aws ecr get-login-password --region $AWS_DEFAULT_REGION)
+
+              if [ -z "$TOKEN" ]; then
+                echo "Error: Failed to get ECR token"
+                exit 1
+              fi
+
+              echo "Successfully obtained ECR token"
+
+              # Loop through target namespaces
+              {{- range .Values.ecrCredentialHelper.targetNamespaces }}
+              NAMESPACE="{{ . }}"
+              echo "Processing namespace: $NAMESPACE"
+
+              # Check if namespace exists
+              if ! kubectl get namespace $NAMESPACE >/dev/null 2>&1; then
+                echo "Namespace $NAMESPACE does not exist, skipping..."
+                continue
+              fi
+
+              # Delete old secret if it exists
+              kubectl delete secret $SECRET_NAME -n $NAMESPACE --ignore-not-found=true
+
+              # Create new secret
+              kubectl create secret docker-registry $SECRET_NAME \
+                --docker-server=$ECR_REGISTRY \
+                --docker-username=AWS \
+                --docker-password="$TOKEN" \
+                --namespace=$NAMESPACE
+
+              echo "✓ Secret $SECRET_NAME updated in namespace $NAMESPACE"
+              {{- end }}
+
+              echo "ECR credential refresh completed successfully!"
+{{- end }}
