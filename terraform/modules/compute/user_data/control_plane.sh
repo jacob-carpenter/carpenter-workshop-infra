@@ -11,7 +11,7 @@ apt-get update -y
 apt-get upgrade -y
 
 # Install required packages
-apt-get install -y curl wget apt-transport-https ca-certificates awscli
+apt-get install -y curl wget apt-transport-https ca-certificates awscli openssl
 
 # Get EC2 instance metadata for cloud provider
 INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
@@ -36,6 +36,19 @@ sleep 30
 
 # Verify installation
 kubectl get nodes
+
+# Setup a HMAC token for auth between external services and internal endpoints via proxy
+echo "Setting up HMAC token for secure communication"
+HMAC_SECRET=$(openssl rand -base64 32) 
+
+# Store HMAC token in SSM Parameter Store 
+# Use simpler parameter name format (no leading slash, hyphen-separated)
+aws ssm put-parameter \
+  --name "carpenter-workshop-${ENVIRONMENT}-hmac-token" \
+  --value "$HMAC_SECRET" \
+  --type "SecureString" \
+  --overwrite \
+  --region ${AWS_REGION} || true
 
 # Get the node token for workers
 K3S_TOKEN=$(cat /var/lib/rancher/k3s/server/node-token)
