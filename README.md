@@ -71,3 +71,4 @@ kubectl get pods -n carpenter-workshop -l app.kubernetes.io/name=external-dns
 [] Clean up the values.yaml to extract out commonly changing environment specific concepts to a much cleaner location
 [] Update to use github actions to apply infra and helm install/upgrade upon infra or helm chart changes
 [] Validate full infra rebuild prior to main merge
+[] Update the readmes and add arch diagrams

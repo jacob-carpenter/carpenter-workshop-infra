@@ -99,6 +99,9 @@ Generate full image name
 {{- $context := .context -}}
 alb.ingress.kubernetes.io/group.name: {{ include "common.sharedAlb.groupName" $context }}
 alb.ingress.kubernetes.io/group.order: '{{ $groupOrder }}'
+alb.ingress.kubernetes.io/certificate-arn: {{ include "common.sharedAlb.certificateArn" $context }}
+alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+alb.ingress.kubernetes.io/ssl-redirect: '443'
 external-dns.alpha.kubernetes.io/hostname: {{ $hostname }}
 alb.ingress.kubernetes.io/backend-protocol: {{ $context.Values.commonIngressAnnotations.backendProtocol | default "HTTP" }}
 alb.ingress.kubernetes.io/healthcheck-path: {{ $healthcheckPath }}

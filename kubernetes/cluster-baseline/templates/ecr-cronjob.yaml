@@ -8,7 +8,6 @@ metadata:
     app: ecr-credential-helper
     component: cluster-baseline
 spec:
-  # Run every 6 hours (ECR tokens expire after 12 hours)
   schedule: "0 */6 * * *"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -21,10 +20,8 @@ spec:
             app: ecr-credential-helper
         spec:
           serviceAccountName: {{ .Values.ecrCredentialHelper.serviceAccount.name }}
-          # Run on control-plane node which has internet access
           nodeSelector:
             node-role.kubernetes.io/control-plane: "true"
-          # Allow scheduling on control-plane (K3s allows this by default, but being explicit)
           tolerations:
           - key: node-role.kubernetes.io/control-plane
             operator: Exists

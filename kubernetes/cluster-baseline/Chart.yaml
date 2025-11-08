@@ -25,16 +25,6 @@ dependencies:
     repository: https://kubernetes.github.io/ingress-nginx
     condition: ingress-nginx.enabled
 
-  - name: cert-manager
-    version: 1.19.1
-    repository: https://charts.jetstack.io
-    condition: cert-manager.enabled
-
-  - name: metrics-server
-    version: 3.12.2
-    repository: https://kubernetes-sigs.github.io/metrics-server/
-    condition: metrics-server.enabled
-
   - name: aws-load-balancer-controller
     version: 1.13.1
     repository: https://aws.github.io/eks-charts

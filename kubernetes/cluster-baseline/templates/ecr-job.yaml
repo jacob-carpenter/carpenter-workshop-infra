@@ -1,6 +1,4 @@
 {{- if .Values.ecrCredentialHelper.enabled }}
-# Immediate Job - Runs once when the chart is installed/upgraded
-# This ensures ECR credentials are available immediately without waiting for the CronJob schedule
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -11,12 +9,11 @@ metadata:
     component: cluster-baseline
     job-type: init
   annotations:
-    # This ensures the job runs on every helm upgrade
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "1"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
-  ttlSecondsAfterFinished: 300  # Clean up 5 minutes after completion
+  ttlSecondsAfterFinished: 300 
   backoffLimit: 3
   template:
     metadata:
@@ -25,10 +22,8 @@ spec:
         job-type: init
     spec:
       serviceAccountName: {{ .Values.ecrCredentialHelper.serviceAccount.name }}
-      # Run on control-plane node which has internet access
       nodeSelector:
         node-role.kubernetes.io/control-plane: "true"
-      # Allow scheduling on control-plane (K3s allows this by default, but being explicit)
       tolerations:
       - key: node-role.kubernetes.io/control-plane
         operator: Exists

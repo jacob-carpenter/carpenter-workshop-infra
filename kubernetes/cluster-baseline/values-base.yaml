@@ -1,14 +1,6 @@
-clusterName: carpenter-workshop-core
-environment: prod
-
-namespace:
-  create: true
-  name: cluster-baseline
 
 aws-load-balancer-controller:
   enabled: true
-
-  clusterName: carpenter-workshop-prod
 
   serviceAccount:
     create: true
@@ -57,15 +49,11 @@ external-dns:
     - ingress
     - service
 
-  domainFilters:
-    - carpenterworkshop.net
-
   policy: upsert-only
 
   interval: 1m
 
   registry: txt
-  txtOwnerId: carpenter-workshop-prod
 
   resources:
     requests:
@@ -92,11 +80,6 @@ ecrCredentialHelper:
 
   ecr:
     region: us-east-1
-    registryAccount: "740474257663"
-
-  targetNamespaces:
-    - carpenter-workshop
-    - default
 
   secretName: ecr-secret
 
@@ -122,12 +105,9 @@ ecrCredentialHelper:
 
 sharedAlb:
   enabled: true
-  namespace: carpenter-workshop
-  groupName: carpenter-workshop-shared
   groupOrder: "100"
   scheme: internet-facing
   targetType: instance
-  certificateArn: arn:aws:acm:us-east-1:740474257663:certificate/e3431eb5-5a19-4b87-a826-80fcdb0d3fd2
   inboundCidrs: 0.0.0.0/0
   idleTimeout: 60
   deletionProtection: false

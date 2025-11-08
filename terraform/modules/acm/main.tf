@@ -57,3 +57,18 @@ resource "aws_acm_certificate_validation" "main" {
     create = "10m"
   }
 }
+
+# Store certificate ARN in SSM Parameter Store for use by deployment workflows
+resource "aws_ssm_parameter" "certificate_arn" {
+  name        = "${var.project_name}-${var.environment}-certificate-arn"
+  description = "ACM Certificate ARN for ${var.environment} environment"
+  type        = "String"
+  value       = aws_acm_certificate.main.arn
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-${var.environment}-certificate-arn"
+    }
+  )
+}

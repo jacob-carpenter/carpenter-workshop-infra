@@ -127,6 +127,7 @@ resource "aws_iam_role_policy" "control_plane_alb_controller" {
           "ec2:DescribeSecurityGroups",
           "ec2:DescribeInstances",
           "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeRouteTables",
           "ec2:DescribeTags",
           "ec2:GetCoipPoolUsage",
           "ec2:DescribeCoipPools",
@@ -244,7 +245,8 @@ resource "aws_iam_role_policy" "control_plane_alb_controller" {
           "elasticloadbalancing:CreateListener",
           "elasticloadbalancing:DeleteListener",
           "elasticloadbalancing:CreateRule",
-          "elasticloadbalancing:DeleteRule"
+          "elasticloadbalancing:DeleteRule",
+          "elasticloadbalancing:SetRulePriorities"
         ]
         Resource = "*"
       },
@@ -500,6 +502,7 @@ resource "aws_iam_role_policy" "worker_nodes_alb_controller" {
           "ec2:DescribeTags",
           "ec2:GetCoipPoolUsage",
           "ec2:DescribeCoipPools",
+          "ec2:DescribeRouteTables",
           "elasticloadbalancing:DescribeLoadBalancers",
           "elasticloadbalancing:DescribeLoadBalancerAttributes",
           "elasticloadbalancing:DescribeListeners",
@@ -614,7 +617,8 @@ resource "aws_iam_role_policy" "worker_nodes_alb_controller" {
           "elasticloadbalancing:CreateListener",
           "elasticloadbalancing:DeleteListener",
           "elasticloadbalancing:CreateRule",
-          "elasticloadbalancing:DeleteRule"
+          "elasticloadbalancing:DeleteRule",
+          "elasticloadbalancing:SetRulePriorities"
         ]
         Resource = "*"
       },

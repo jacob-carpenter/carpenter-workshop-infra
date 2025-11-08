@@ -1,0 +1,27 @@
+clusterName: carpenter-workshop-core
+environment: prod
+
+namespace:
+  create: true
+  name: cluster-baseline
+
+aws-load-balancer-controller:
+  clusterName: carpenter-workshop-prod
+
+external-dns:
+  domainFilters:
+    - carpenterworkshop.net
+  txtOwnerId: carpenter-workshop-prod
+
+ecrCredentialHelper:
+  ecr:
+    registryAccount: "740474257663"
+  targetNamespaces:
+    - carpenter-workshop
+    - default
+
+sharedAlb:
+  namespace: carpenter-workshop
+  groupName: carpenter-workshop-shared
+  # Certificate ARN will be injected by deployment workflow
+  certificateArn: ""

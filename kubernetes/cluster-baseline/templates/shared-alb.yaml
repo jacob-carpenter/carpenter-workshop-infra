@@ -16,14 +16,19 @@ metadata:
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
     alb.ingress.kubernetes.io/ssl-redirect: '443'
     alb.ingress.kubernetes.io/certificate-arn: {{ .Values.sharedAlb.certificateArn }}
-    alb.ingress.kubernetes.io/inbound-cidrs: {{ .Values.sharedAlb.inboundCidrs }}
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-2016-08
     alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds={{ .Values.sharedAlb.idleTimeout }},deletion_protection.enabled={{ .Values.sharedAlb.deletionProtection }}
     alb.ingress.kubernetes.io/tags: Environment={{ .Values.environment }},ManagedBy=kubernetes,Project=carpenter-workshop
 spec:
   ingressClassName: alb
-  defaultBackend:
-    service:
-      name: cluster-baseline-404
-      port:
-        number: 80
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cluster-baseline-404
+                port:
+                  number: 80
 {{- end }}

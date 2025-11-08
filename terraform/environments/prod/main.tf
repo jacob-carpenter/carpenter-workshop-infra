@@ -98,8 +98,8 @@ module "acm" {
   environment  = var.environment
   domain_name  = var.domain_name
 
-  # Include www subdomain
-  subject_alternative_names = ["www.${var.domain_name}"]
+  # Include www and importmap subdomains
+  subject_alternative_names = ["www.${var.domain_name}", "importmap.${var.domain_name}"]
 
   tags = var.tags
 }

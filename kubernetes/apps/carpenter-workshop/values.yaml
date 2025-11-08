@@ -6,7 +6,7 @@ namespace:
 
 sharedAlb:
   groupName: carpenter-workshop-shared
-  certificateArn: arn:aws:acm:us-east-1:740474257663:certificate/88ca8003-9a3d-46e4-9331-bc68cdbb7147
+  certificateArn: arn:aws:acm:us-east-1:740474257663:certificate/e3431eb5-5a19-4b87-a826-80fcdb0d3fd2
 
 commonIngressAnnotations:
   backendProtocol: HTTP

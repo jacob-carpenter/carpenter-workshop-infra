@@ -44,3 +44,18 @@ output "worker_role_arn" {
   description = "ARN of worker nodes IAM role"
   value       = aws_iam_role.worker_nodes.arn
 }
+
+# Store control plane IP in SSM Parameter Store for use by deployment workflows
+resource "aws_ssm_parameter" "control_plane_ip" {
+  name        = "${var.project_name}-${var.environment}-control-plane-ip"
+  description = "Control plane public IP for ${var.environment} environment"
+  type        = "String"
+  value       = aws_eip.control_plane.public_ip
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-${var.environment}-control-plane-ip"
+    }
+  )
+}

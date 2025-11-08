@@ -1,0 +1,244 @@
+name: Deploy Helm Charts
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to deploy to (prod, staging, dev)'
+        required: true
+        type: string
+      chart_path:
+        description: 'Path to the Helm chart directory'
+        required: true
+        type: string
+      release_name:
+        description: 'Helm release name'
+        required: true
+        type: string
+      namespace:
+        description: 'Kubernetes namespace'
+        required: true
+        type: string
+      values_file:
+        description: 'Path to values file (relative to chart_path)'
+        required: false
+        type: string
+        default: 'values.yaml'
+      create_namespace:
+        description: 'Create namespace if it does not exist'
+        required: false
+        type: boolean
+        default: true
+      helm_version:
+        description: 'Helm version to use'
+        required: false
+        type: string
+        default: 'v3.14.0'
+
+jobs:
+  helm-deploy:
+    name: Helm Install/Upgrade
+    runs-on: self-hosted
+    environment: ${{ inputs.environment }}
+    # Required for OIDC token generation
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.chart_path }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ inputs.helm_version }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: github-actions-helm-${{ inputs.environment }}
+          aws-region: us-east-1
+
+      - name: Setup kubectl and kubeconfig
+        shell: bash
+        run: |
+          # Install kubectl if not present
+          if ! command -v kubectl &> /dev/null; then
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+          fi
+
+          # Get kubeconfig from Parameter Store
+          aws ssm get-parameter \
+            --name carpenter-workshop-${{ inputs.environment }}-kubeconfig \
+            --with-decryption \
+            --query 'Parameter.Value' \
+            --output text \
+            --region us-east-1 > /tmp/kubeconfig
+
+          # Get control plane IP from SSM (stored by terraform)
+          CONTROL_PLANE_IP=$(aws ssm get-parameter \
+            --name carpenter-workshop-${{ inputs.environment }}-control-plane-ip \
+            --query 'Parameter.Value' \
+            --output text \
+            --region us-east-1 2>/dev/null || echo "")
+
+          if [ -n "$CONTROL_PLANE_IP" ]; then
+            sed -i "s|127.0.0.1|$CONTROL_PLANE_IP|g" /tmp/kubeconfig
+          fi
+
+          export KUBECONFIG=/tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> $GITHUB_ENV
+
+          # Verify cluster connectivity
+          kubectl get nodes
+
+      - name: Add Helm repositories
+        shell: bash
+        run: |
+          # Add common helm repos
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
+          helm repo add jetstack https://charts.jetstack.io || true
+          helm repo add eks https://aws.github.io/eks-charts || true
+          helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/ || true
+          helm repo update
+
+      - name: Update Helm dependencies
+        shell: bash
+        run: |
+          if [ -f "Chart.yaml" ]; then
+            helm dependency update
+          fi
+
+      - name: Helm Lint
+        id: lint
+        shell: bash
+        run: |
+          # Build values file arguments
+          VALUES_ARGS=""
+          if [ -f "values-base.yaml" ]; then
+            VALUES_ARGS="--values values-base.yaml"
+          fi
+          if [ -f "${{ inputs.values_file }}" ]; then
+            VALUES_ARGS="$VALUES_ARGS --values ${{ inputs.values_file }}"
+          fi
+
+          helm lint . $VALUES_ARGS || true
+
+      - name: Helm Diff (if installed)
+        id: diff
+        shell: bash
+        continue-on-error: true
+        run: |
+          # Install helm-diff plugin if not present
+          if ! helm plugin list | grep -q diff; then
+            helm plugin install https://github.com/databus23/helm-diff
+          fi
+
+          # Build values file arguments
+          VALUES_ARGS=""
+          if [ -f "values-base.yaml" ]; then
+            VALUES_ARGS="--values values-base.yaml"
+          fi
+          if [ -f "${{ inputs.values_file }}" ]; then
+            VALUES_ARGS="$VALUES_ARGS --values ${{ inputs.values_file }}"
+          fi
+
+          # Show diff if release exists
+          if helm list -n ${{ inputs.namespace }} | grep -q ${{ inputs.release_name }}; then
+            echo "## Helm Diff" >> $GITHUB_STEP_SUMMARY
+            echo '```diff' >> $GITHUB_STEP_SUMMARY
+            helm diff upgrade ${{ inputs.release_name }} . \
+              $VALUES_ARGS \
+              --namespace ${{ inputs.namespace }} \
+              --allow-unreleased >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fetch dynamic values from SSM
+        id: fetch_values
+        shell: bash
+        run: |
+          # Fetch certificate ARN from SSM
+          CERT_ARN=$(aws ssm get-parameter \
+            --name carpenter-workshop-${{ inputs.environment }}-certificate-arn \
+            --query 'Parameter.Value' \
+            --output text \
+            --region us-east-1 2>/dev/null || echo "")
+
+          if [ -n "$CERT_ARN" ]; then
+            echo "certificate_arn=$CERT_ARN" >> $GITHUB_OUTPUT
+            echo "Found certificate ARN: $CERT_ARN"
+          else
+            echo "Warning: Certificate ARN not found in SSM"
+          fi
+
+      - name: Helm Install/Upgrade
+        id: helm
+        shell: bash
+        run: |
+          INSTALL_ARGS=""
+          if [ "${{ inputs.create_namespace }}" == "true" ]; then
+            INSTALL_ARGS="--create-namespace"
+          fi
+
+          # Build values file arguments
+          VALUES_ARGS=""
+          if [ -f "values-base.yaml" ]; then
+            VALUES_ARGS="--values values-base.yaml"
+          fi
+          if [ -f "${{ inputs.values_file }}" ]; then
+            VALUES_ARGS="$VALUES_ARGS --values ${{ inputs.values_file }}"
+          fi
+
+          # Add certificate ARN if available
+          SET_ARGS=""
+          if [ -n "${{ steps.fetch_values.outputs.certificate_arn }}" ]; then
+            SET_ARGS="--set sharedAlb.certificateArn=${{ steps.fetch_values.outputs.certificate_arn }}"
+          fi
+
+          helm upgrade --install ${{ inputs.release_name }} . \
+            $VALUES_ARGS \
+            --namespace ${{ inputs.namespace }} \
+            $INSTALL_ARGS \
+            $SET_ARGS \
+            --wait \
+            --timeout 10m
+
+      - name: Display Deployment Summary
+        shell: bash
+        run: |
+          echo "## Helm Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Name:** ${{ inputs.release_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** ${{ inputs.namespace }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Chart Path:** ${{ inputs.chart_path }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Release Status" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          helm status ${{ inputs.release_name }} -n ${{ inputs.namespace }} >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployed Resources" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          kubectl get all -n ${{ inputs.namespace }} -l app.kubernetes.io/instance=${{ inputs.release_name }} >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on Failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "## ❌ Helm Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The Helm deployment encountered an error. Please review the logs above." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Failed Step:** ${{ steps.helm.outcome == 'failure' && 'Helm Install/Upgrade' || 'Unknown' }}" >> $GITHUB_STEP_SUMMARY
