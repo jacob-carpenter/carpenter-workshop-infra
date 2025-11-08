@@ -223,3 +223,15 @@ ecrCredentialHelper:
     repository: alpine/k8s
     tag: 1.28.3
     pullPolicy: IfNotPresent
+
+sharedAlb:
+  enabled: true
+  namespace: carpenter-workshop
+  groupName: carpenter-workshop-shared
+  groupOrder: "1"
+  scheme: internet-facing
+  targetType: instance
+  certificateArn: arn:aws:acm:us-east-1:740474257663:certificate/88ca8003-9a3d-46e4-9331-bc68cdbb7147
+  inboundCidrs: 0.0.0.0/0
+  idleTimeout: 60
+  deletionProtection: false

@@ -1,0 +1,103 @@
+{{- if .Values.sharedAlb.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: cluster-baseline-404
+  namespace: {{ .Values.sharedAlb.namespace }}
+  labels:
+    app: cluster-baseline-404
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: cluster-baseline-404
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-baseline-404
+  namespace: {{ .Values.sharedAlb.namespace }}
+  labels:
+    app: cluster-baseline-404
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-baseline-404
+  template:
+    metadata:
+      labels:
+        app: cluster-baseline-404
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: html
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "10m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: cluster-baseline-404-config
+      - name: html
+        configMap:
+          name: cluster-baseline-404-html
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-baseline-404-config
+  namespace: {{ .Values.sharedAlb.namespace }}
+data:
+  nginx.conf: |
+    events {
+      worker_connections 1024;
+    }
+    http {
+      server {
+        listen 8080;
+        location / {
+          root /usr/share/nginx/html;
+          index index.html;
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-baseline-404-html
+  namespace: {{ .Values.sharedAlb.namespace }}
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>404 Not Found</title>
+      <style>
+        body { font-family: system-ui; text-align: center; padding: 50px; }
+        h1 { color: #666; }
+      </style>
+    </head>
+    <body>
+      <h1>404 - Not Found</h1>
+      <p>The requested resource was not found on this server.</p>
+    </body>
+    </html>
+{{- end }}

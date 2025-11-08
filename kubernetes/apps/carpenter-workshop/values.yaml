@@ -1,14 +1,28 @@
-# Carpenter Workshop Application Configuration
-
-# Application metadata
 app:
   name: carpenter-workshop
 
-# Namespace configuration
 namespace:
   name: carpenter-workshop
 
-# Container image configuration
+sharedAlb:
+  groupName: carpenter-workshop-shared
+  certificateArn: arn:aws:acm:us-east-1:740474257663:certificate/88ca8003-9a3d-46e4-9331-bc68cdbb7147
+
+commonIngressAnnotations:
+  backendProtocol: HTTP
+  healthcheck:
+    protocol: HTTP
+    intervalSeconds: "30"
+    timeoutSeconds: "5"
+    healthyThresholdCount: "2"
+    unhealthyThresholdCount: "2"
+  targetGroup:
+    deregistrationDelaySeconds: 30
+
+commonLabels:
+  project: carpenter-workshop
+  managed-by: helm
+
 image:
   registry: 740474257663.dkr.ecr.us-east-1.amazonaws.com
   repository: carpenter-workshop
@@ -17,35 +31,26 @@ image:
   pullSecrets:
     - name: ecr-secret
 
-# Deployment configuration
 deployment:
   replicaCount: 2
   revisionHistoryLimit: 3
-
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
-
   antiAffinity:
     enabled: true
     weight: 100
+  nodeSelector: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node-role.kubernetes.io/control-plane
+            operator: DoesNotExist
 
-  # Node affinity - ensure pods run only on worker nodes
-  nodeSelector:
-    node-role.kubernetes.io/worker: "true"
-
-  # Alternative: use affinity for more flexible scheduling
-  # affinity:
-  #   nodeAffinity:
-  #     requiredDuringSchedulingIgnoredDuringExecution:
-  #       nodeSelectorTerms:
-  #       - matchExpressions:
-  #         - key: node-role.kubernetes.io/control-plane
-  #           operator: DoesNotExist
-
-# Service configuration
 service:
   enabled: true
   type: NodePort
@@ -54,43 +59,14 @@ service:
       port: 80
       targetPort: 80
       protocol: TCP
-      # NodePort will be auto-assigned in 30000-32767 range
 
-# Ingress configuration with AWS Load Balancer Controller
 ingress:
   enabled: true
   className: alb
-  annotations:
-    # external-dns - Automatically creates Route 53 DNS records for both domains
-    external-dns.alpha.kubernetes.io/hostname: carpenterworkshop.net,www.carpenterworkshop.net
-
-    # AWS Load Balancer Controller annotations
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: instance
-
-    # HTTPS/SSL Configuration with ACM certificate
-    # Use actions annotation for proper SSL redirect
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    alb.ingress.kubernetes.io/ssl-redirect: '443'
-    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:740474257663:certificate/88ca8003-9a3d-46e4-9331-bc68cdbb7147 ## Replace with cert arn for the environment
-
-    # Backend protocol (pods receive HTTP traffic)
-    alb.ingress.kubernetes.io/backend-protocol: HTTP
-
-    # Security group - allow HTTP/HTTPS from internet (managed by controller)
-    alb.ingress.kubernetes.io/inbound-cidrs: 0.0.0.0/0
-
-    # Health check configuration
-    alb.ingress.kubernetes.io/healthcheck-path: /health
-    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
-    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
-    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
-    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
-    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
-
-    # ALB attributes
-    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
-
+  groupOrder: "20"
+  hostname: carpenterworkshop.net,www.carpenterworkshop.net
+  healthcheckPath: /health
+  extraAnnotations: {}
   hosts:
     - host: carpenterworkshop.net
       paths:
@@ -103,10 +79,8 @@ ingress:
           pathType: Prefix
           servicePort: 80
 
-  # TLS is handled by ALB with ACM certificate
   tls: []
 
-# Health checks for Caddy
 healthChecks:
   liveness:
     enabled: true
@@ -119,7 +93,6 @@ healthChecks:
     timeoutSeconds: 5
     successThreshold: 1
     failureThreshold: 3
-
   readiness:
     enabled: true
     httpGet:
@@ -132,7 +105,6 @@ healthChecks:
     successThreshold: 1
     failureThreshold: 3
 
-# Resource limits
 resources:
   requests:
     memory: "256Mi"
@@ -141,7 +113,6 @@ resources:
     memory: "512Mi"
     cpu: "500m"
 
-# Horizontal Pod Autoscaler
 autoscaling:
   enabled: true
   minReplicas: 1
@@ -177,20 +148,16 @@ autoscaling:
           periodSeconds: 30
       selectPolicy: Max
 
-# Environment variables
 env:
   - name: ENVIRONMENT
     value: "prod"
 
-# ConfigMap for configuration files
 configMap:
   enabled: false
 
-# Secrets
 secrets:
   enabled: false
 
-# Volumes for Caddy data
 volumes:
   enabled: true
   volumes:
@@ -204,21 +171,17 @@ volumes:
     - name: caddy-config
       mountPath: /config
 
-# Pod labels
 podLabels:
   environment: prod
 
-# Service Account
 serviceAccount:
   create: true
   name: ""
   annotations: {}
 
-# Security Context
 securityContext:
   runAsNonRoot: false
 
-# Container Security Context
 containerSecurityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: false

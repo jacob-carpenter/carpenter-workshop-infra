@@ -1,0 +1,29 @@
+{{- if .Values.sharedAlb.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shared-alb-baseline
+  namespace: {{ .Values.sharedAlb.namespace }}
+  labels:
+    app: shared-alb
+    component: baseline
+    environment: {{ .Values.environment }}
+  annotations:
+    alb.ingress.kubernetes.io/group.name: {{ .Values.sharedAlb.groupName }}
+    alb.ingress.kubernetes.io/group.order: '{{ .Values.sharedAlb.groupOrder }}'
+    alb.ingress.kubernetes.io/scheme: {{ .Values.sharedAlb.scheme }}
+    alb.ingress.kubernetes.io/target-type: {{ .Values.sharedAlb.targetType }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.sharedAlb.certificateArn }}
+    alb.ingress.kubernetes.io/inbound-cidrs: {{ .Values.sharedAlb.inboundCidrs }}
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds={{ .Values.sharedAlb.idleTimeout }},deletion_protection.enabled={{ .Values.sharedAlb.deletionProtection }}
+    alb.ingress.kubernetes.io/tags: Environment={{ .Values.environment }},ManagedBy=kubernetes,Project=carpenter-workshop
+spec:
+  ingressClassName: alb
+  defaultBackend:
+    service:
+      name: cluster-baseline-404
+      port:
+        number: 80
+{{- end }}
