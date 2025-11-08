@@ -1,0 +1,128 @@
+name: Deploy Terraform Infrastructure
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to deploy to (prod, staging, dev)'
+        required: true
+        type: string
+      terraform_working_dir:
+        description: 'Working directory for Terraform'
+        required: true
+        type: string
+      terraform_version:
+        description: 'Terraform version to use'
+        required: false
+        type: string
+        default: '1.9.0'
+
+jobs:
+  terraform-deploy:
+    name: Terraform Apply
+    runs-on: self-hosted
+    environment: ${{ inputs.environment }}
+    # Required for OIDC token generation
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.terraform_working_dir }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: github-actions-terraform-${{ inputs.environment }}
+          aws-region: us-east-1
+
+      - name: Terraform Format Check
+        id: fmt
+        shell: bash
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        shell: bash
+        run: terraform init
+
+      - name: Terraform Validate
+        id: validate
+        shell: bash
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        id: plan
+        shell: bash
+        run: |
+          terraform plan -no-color -out=tfplan
+          terraform show -no-color tfplan > plan_output.txt
+        continue-on-error: false
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ inputs.environment }}
+          path: ${{ inputs.terraform_working_dir }}/tfplan
+          retention-days: 5
+
+      - name: Display Plan Summary
+        shell: bash
+        run: |
+          echo "## Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Working Directory:** ${{ inputs.terraform_working_dir }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan Output (first 50 lines)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -50 plan_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Terraform Apply
+        id: apply
+        shell: bash
+        run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Output
+        id: output
+        shell: bash
+        run: |
+          echo "## Terraform Outputs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          terraform output -json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          # Export key outputs for use in subsequent jobs
+          if terraform output control_plane_public_ip &>/dev/null; then
+            echo "control_plane_public_ip=$(terraform output -raw control_plane_public_ip)" >> $GITHUB_OUTPUT
+          fi
+          if terraform output vpc_id &>/dev/null; then
+            echo "vpc_id=$(terraform output -raw vpc_id)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify on Failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "## ❌ Terraform Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The Terraform deployment encountered an error. Please review the logs above." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Failed Step:** ${{ steps.apply.outcome == 'failure' && 'Terraform Apply' || steps.plan.outcome == 'failure' && 'Terraform Plan' || 'Unknown' }}" >> $GITHUB_STEP_SUMMARY
+
+    outputs:
+      control_plane_public_ip: ${{ steps.output.outputs.control_plane_public_ip }}
+      vpc_id: ${{ steps.output.outputs.vpc_id }}

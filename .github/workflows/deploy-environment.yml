@@ -1,0 +1,168 @@
+name: Deploy Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy (prod, staging, dev)'
+        required: true
+        type: choice
+        options:
+          - prod
+        default: 'prod'
+      skip_terraform:
+        description: 'Skip terraform deployment'
+        required: false
+        type: boolean
+        default: false
+      skip_cluster_baseline:
+        description: 'Skip cluster-baseline helm deployment'
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  determine-environment:
+    name: Determine Environment
+    runs-on: self-hosted
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      terraform_dir: ${{ steps.env.outputs.terraform_dir }}
+    steps:
+      - name: Determine environment from branch or input
+        id: env
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            ENV="prod"
+          else
+            echo "Error: Unable to determine environment"
+            exit 1
+          fi
+
+          echo "environment=${ENV}" >> $GITHUB_OUTPUT
+          echo "terraform_dir=terraform/environments/${ENV}" >> $GITHUB_OUTPUT
+
+          echo "## Deployment Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${ENV}" >> $GITHUB_STEP_SUMMARY
+          echo "**Terraform Directory:** terraform/environments/${ENV}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+
+  detect-changes:
+    name: Detect Changes
+    runs-on: self-hosted
+    needs: determine-environment
+    outputs:
+      terraform_changed: ${{ steps.changes.outputs.terraform }}
+      cluster_baseline_changed: ${{ steps.changes.outputs.cluster_baseline }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: changes
+        shell: bash
+        run: |
+          # Detect Terraform changes
+          if [ "${{ github.event.inputs.skip_terraform }}" == "true" ]; then
+            echo "terraform=false" >> $GITHUB_OUTPUT
+            echo "Terraform deployment skipped by user input"
+          else
+            if git diff --name-only HEAD~1 HEAD | grep -q "^terraform/"; then
+              echo "terraform=true" >> $GITHUB_OUTPUT
+              echo "Terraform files have changed"
+            else
+              echo "terraform=true" >> $GITHUB_OUTPUT
+              echo "Running terraform deployment (manual trigger or push to main)"
+            fi
+          fi
+
+          # Detect cluster-baseline changes
+          if [ "${{ github.event.inputs.skip_cluster_baseline }}" == "true" ]; then
+            echo "cluster_baseline=false" >> $GITHUB_OUTPUT
+            echo "Cluster baseline deployment skipped by user input"
+          else
+            if git diff --name-only HEAD~1 HEAD | grep -q "^kubernetes/cluster-baseline/"; then
+              echo "cluster_baseline=true" >> $GITHUB_OUTPUT
+              echo "Cluster baseline files have changed"
+            else
+              echo "cluster_baseline=true" >> $GITHUB_OUTPUT
+              echo "Running cluster baseline deployment (manual trigger or push to main)"
+            fi
+          fi
+
+  deploy-terraform:
+    name: Deploy Terraform Infrastructure
+    needs: [determine-environment, detect-changes]
+    if: needs.detect-changes.outputs.terraform_changed == 'true'
+    uses: ./.github/workflows/deploy-terraform.yml
+    secrets: inherit
+    with:
+      environment: ${{ needs.determine-environment.outputs.environment }}
+      terraform_working_dir: ${{ needs.determine-environment.outputs.terraform_dir }}
+
+  deploy-cluster-baseline:
+    name: Deploy Cluster Baseline
+    needs: [determine-environment, detect-changes, deploy-terraform]
+    if: |
+      always() &&
+      (needs.deploy-terraform.result == 'success' || needs.deploy-terraform.result == 'skipped') &&
+      needs.detect-changes.outputs.cluster_baseline_changed == 'true'
+    uses: ./.github/workflows/deploy-helm.yml
+    secrets: inherit
+    with:
+      environment: ${{ needs.determine-environment.outputs.environment }}
+      chart_path: kubernetes/cluster-baseline
+      release_name: cluster-baseline
+      namespace: carpenter-workshop
+      values_file: values-${{ needs.determine-environment.outputs.environment }}.yaml
+      create_namespace: true
+
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: self-hosted
+    needs: [determine-environment, detect-changes, deploy-terraform, deploy-cluster-baseline]
+    if: always()
+    steps:
+      - name: Generate summary
+        shell: bash
+        run: |
+          echo "## ${{ needs.determine-environment.outputs.environment }} Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | ------ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform Deploy | ${{ needs.deploy-terraform.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cluster Baseline Deploy | ${{ needs.deploy-cluster-baseline.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Determine overall status
+          FAILED=false
+          if [ "${{ needs.deploy-terraform.result }}" == "failure" ] || \
+             [ "${{ needs.deploy-cluster-baseline.result }}" == "failure" ]; then
+            FAILED=true
+          fi
+
+          if [ "$FAILED" == "true" ]; then
+            echo "❌ **Deployment failed. Please check the logs above.**" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.deploy-terraform.result }}" == "success" ] || \
+               [ "${{ needs.deploy-cluster-baseline.result }}" == "success" ]; then
+            echo "✅ **Deployment completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️ **All deployments were skipped.**" >> $GITHUB_STEP_SUMMARY
+          fi
