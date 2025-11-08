@@ -11,24 +11,6 @@ output "public_subnet_ids" {
   value       = module.vpc.public_subnet_ids
 }
 
-# ALB Outputs - Disabled (now managed by AWS Load Balancer Controller)
-# To get ALB DNS after deployment:
-# kubectl get ingress -n carpenter-workshop carpenter-workshop -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-# output "alb_dns_name" {
-#   description = "DNS name of the Application Load Balancer"
-#   value       = module.alb.alb_dns_name
-# }
-#
-# output "alb_zone_id" {
-#   description = "Zone ID of the Application Load Balancer"
-#   value       = module.alb.alb_zone_id
-# }
-#
-# output "target_group_arn" {
-#   description = "ARN of the target group"
-#   value       = module.alb.target_group_arn
-# }
-
 # Compute Outputs
 output "control_plane_public_ip" {
   description = "Public IP of the control plane"
@@ -109,7 +91,7 @@ output "next_steps" {
   value       = <<-EOT
     Deployment complete! Next steps:
 
-    1. Wait 5-10 minutes for K3s installation to complete
+    1. Wait ~5 minutes for K3s installation to complete
 
     2. Get kubeconfig:
        aws ssm get-parameter \
@@ -128,24 +110,5 @@ output "next_steps" {
 
     5. Verify cluster:
        kubectl get nodes
-
-    6. Deploy cluster baseline (includes AWS Load Balancer Controller):
-       cd ../../../kubernetes/cluster-baseline
-       helm dependency update .
-       helm install cluster-baseline ./ --namespace cluster-baseline --values values.yaml --create-namespace
-
-    7. Update any relevant interacting app to use latest HMAC secure token:
-       aws ssm get-parameter \
-         --name "carpenter-workshop-${var.environment}-hmac-token" \
-         --with-decryption \
-         --query 'Parameter.Value' \
-         --output text \
-         --region ${var.aws_region}
-
-    8. Update any relevant Kubernetes app to use ACM certificate:
-       Certificate ARN: ${module.acm.certificate_arn}
-
-       Update the ingress annotation in your app's values.yaml:
-       alb.ingress.kubernetes.io/certificate-arn: ${module.acm.certificate_arn}
   EOT
 }
