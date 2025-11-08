@@ -9,8 +9,6 @@ on:
         type: choice
         options:
           - prod
-          - staging
-          - dev
         default: 'prod'
       skip_terraform:
         description: 'Skip terraform deployment'
