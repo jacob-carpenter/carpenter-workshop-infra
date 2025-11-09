@@ -1,0 +1,25 @@
+# Production environment-specific values
+
+image:
+  tag: prod
+
+ingress:
+  hostname: carpenterworkshop.net,www.carpenterworkshop.net
+  hosts:
+    - host: carpenterworkshop.net
+      paths:
+        - path: /
+          pathType: Prefix
+          servicePort: 80
+    - host: www.carpenterworkshop.net
+      paths:
+        - path: /
+          pathType: Prefix
+          servicePort: 80
+
+env:
+  - name: ENVIRONMENT
+    value: "prod"
+
+podLabels:
+  environment: prod
