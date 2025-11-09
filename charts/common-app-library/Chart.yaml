@@ -1,0 +1,6 @@
+apiVersion: v2
+name: common-app-library
+description: Library chart with reusable Kubernetes resource templates for base carpenter-workshop applications
+type: library 
+version: 1.0.0
+appVersion: "1.0.0"

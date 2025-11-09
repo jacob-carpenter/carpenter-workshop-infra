@@ -1,0 +1,113 @@
+
+aws-load-balancer-controller:
+  enabled: true
+
+  serviceAccount:
+    create: true
+    name: aws-load-balancer-controller
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  replicaCount: 2
+
+  podDisruptionBudget:
+    maxUnavailable: 1
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - aws-load-balancer-controller
+            topologyKey: kubernetes.io/hostname
+
+  enableShield: false
+  enableWaf: false
+  enableWafv2: false
+
+external-dns:
+  enabled: true
+
+  provider: aws
+
+  aws:
+    region: us-east-1
+    zoneType: public
+
+  sources:
+    - ingress
+    - service
+
+  policy: upsert-only
+
+  interval: 1m
+
+  registry: txt
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  serviceAccount:
+    create: true
+    name: external-dns
+
+  securityContext:
+    fsGroup: 65534
+    runAsNonRoot: true
+    runAsUser: 65534
+
+  logLevel: info
+  logFormat: text
+
+ecrCredentialHelper:
+  enabled: true
+
+  ecr:
+    region: us-east-1
+
+  secretName: ecr-secret
+
+  serviceAccount:
+    name: ecr-credential-helper
+    annotations: {}
+
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: "true"
+
+  image:
+    repository: alpine/k8s
+    tag: 1.28.3
+    pullPolicy: IfNotPresent
+
+sharedAlb:
+  enabled: true
+  groupOrder: "100"
+  scheme: internet-facing
+  targetType: instance
+  inboundCidrs: 0.0.0.0/0
+  idleTimeout: 60
+  deletionProtection: false

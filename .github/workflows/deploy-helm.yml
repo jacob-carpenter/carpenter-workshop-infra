@@ -207,9 +207,7 @@ jobs:
             $VALUES_ARGS \
             --namespace ${{ inputs.namespace }} \
             $INSTALL_ARGS \
-            $SET_ARGS \
-            --wait \
-            --timeout 10m
+            $SET_ARGS 
 
       - name: Display Deployment Summary
         shell: bash
