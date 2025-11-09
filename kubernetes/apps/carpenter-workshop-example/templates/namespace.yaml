@@ -1,3 +1,0 @@
-{{- if .Values.namespace.create }}
-{{- include "common.namespace" . }}
-{{- end }}
