@@ -207,7 +207,7 @@ jobs:
             $VALUES_ARGS \
             --namespace ${{ inputs.namespace }} \
             $INSTALL_ARGS \
-            $SET_ARGS \
+            $SET_ARGS 
 
       - name: Display Deployment Summary
         shell: bash
