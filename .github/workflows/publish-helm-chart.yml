@@ -31,6 +31,24 @@ jobs:
         with:
           version: v3.14.0
 
+      - name: Check if gh-pages branch exists
+        id: check_branch
+        run: |
+          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create gh-pages branch if it doesn't exist
+        if: steps.check_branch.outputs.exists == 'false'
+        run: |
+          git checkout --orphan gh-pages
+          git reset --hard
+          git commit --allow-empty -m "Initialize gh-pages branch"
+          git push origin gh-pages
+          git checkout main
+
       - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.6.0
         with:
